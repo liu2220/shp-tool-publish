@@ -3,10 +3,12 @@
 """SHP 工具交付包打包脚本。
 
 统一产出 downloads/packages 下的发布包，各包的排除规则就地维护。
-用法：python3 pack_release.py [mobile|web|all]
+用法：python3 pack_release.py [mobile|web|uos-source|uos-portable|all]
 """
+import fnmatch
 import os
 import sys
+import tarfile
 import zipfile
 
 WORKSPACE = "/workspace"
@@ -32,11 +34,25 @@ JOBS = {
     "uos-source": {
         "src": "SHP工具_UOS版",
         "zip": "SHP工具_UOS版_源码.zip",
+        "fmt": "zip",
         # tools/libredwg 是 x86-64 二进制（30M），龙芯/ARM 用不了且会报格式错误；
         # vendor 必须完整打包（openpyxl 等纯 Python 内置依赖）
         "exclude_dirs": [".git", "__pycache__", ".pytest_cache", "tools",
                          "node_modules", ".idea"],
         "exclude_files": [".DS_Store"],
+    },
+    "uos-portable": {
+        "src": "SHP工具_UOS版_绿色版",
+        "zip": "SHP工具_UOS版_绿色版.tar.gz",
+        "fmt": "tar.gz",
+        # python/ 为 x86-64 自包含解释器（547M），必须保留——龙芯/ARM 主机
+        # 由 run.sh 自动改走系统 python3 + vendor 纯 Python 依赖；
+        # tools/libredwg 为 x86-64 二进制（龙芯用不了，会报格式错误）；
+        # core.* 为崩溃核心转储（core.129831 有 35M），绝不随包分发。
+        "exclude_dirs": [".git", "__pycache__", ".pytest_cache", "tools",
+                         "node_modules", ".idea"],
+        "exclude_files": [".DS_Store"],
+        "exclude_globs": ["core", "core.*", "terminfo"],
     },
 }
 
@@ -56,10 +72,6 @@ def should_skip(root_rel, parts, job):
         if rel == ex or rel.startswith(ex + os.sep):
             return True
     return False
-
-
-def _rel_to_src(root, src):
-    return os.path.relpath(root, src)
 
 
 def _in_excluded_dir(rel_root, excl):
@@ -91,6 +103,9 @@ def _verify_uos_source(src):
         "            try: importlib.import_module(full)\n"
         "            except Exception as e:\n"
         "                if \"No module named 'railroad'\" in str(e): continue\n"
+        "                OPTIONAL = ('matplotlib', 'PIL', 'pillow')\n"
+        "                if isinstance(e, ModuleNotFoundError) and (e.name in OPTIONAL or (e.name or '').startswith('matplotlib') or (e.name or '').startswith('PIL')): continue\n"
+        "                if \"No module named 'matplotlib'\" in str(e) or \"No module named 'PIL'\" in str(e): continue\n"
         "                outs.append(full + ' || ' + str(e)[:70])\n"
         "    sys.stdout = _o\n"
         "    sys.stderr.write('\\n'.join(outs))\n"
@@ -107,11 +122,45 @@ def _verify_uos_source(src):
     return bad
 
 
+def _skip_file(fname, job):
+    """文件级排除：精确名单 + glob（core.* 转储等）+ .pyc"""
+    for pat in job.get("exclude_globs", []):
+        if fnmatch.fnmatch(fname, pat):
+            return True
+    return (fname in job.get("exclude_files", [])
+            or fname.endswith(".pyc"))
+
+
+def _fsize(full):
+    """文件大小；断链符号链接等取 lstat 兜底（terminfo -> 不存在的
+    share/terminfo，getsize 会抛 FileNotFoundError）。"""
+    try:
+        return os.path.getsize(full)
+    except OSError:
+        try:
+            return os.lstat(full).st_size
+        except OSError:
+            return 0
+
+
+def _prune_dirs(root, dirs, rel_root, job):
+    """原地剪枝 dirs：顶层排除目录 + __pycache__/.egg-info"""
+    keep = []
+    for d in dirs:
+        sub = d if rel_root == "." else os.path.join(rel_root, d)
+        if _in_excluded_dir(sub, job["exclude_dirs"]):
+            continue
+        if d == "__pycache__" or d.endswith(".egg-info"):
+            continue
+        keep.append(d)
+    dirs[:] = keep
+
+
 def pack(name):
     job = JOBS[name]
     src = os.path.join(WORKSPACE, job["src"])
     dst = os.path.join(OUT, job["zip"])
-    if name == "uos-source":
+    if name in ("uos-source", "uos-portable"):
         errs = _verify_uos_source(src)
         if errs:
             print("  ✘ %s：内置包校验失败，拒绝打包（会发出残缺包）" % name)
@@ -120,32 +169,41 @@ def pack(name):
             return 0
     n = 0
     total = 0
-    with zipfile.ZipFile(dst, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as z:
-        for root, dirs, files in os.walk(src):
-            rel_root = os.path.relpath(root, src)
-            if rel_root != "." and _in_excluded_dir(rel_root,
-                                                   job["exclude_dirs"]):
-                dirs[:] = []
-                continue
-            # 只剪掉「当前层 + 排除名」仍处于顶层前缀内的子目录，
-            # 避免把 vendor/ezdxf/tools 这类同名子包一并剪掉
-            keep = []
-            for d in dirs:
-                sub = d if rel_root == "." else os.path.join(rel_root, d)
-                if _in_excluded_dir(sub, job["exclude_dirs"]):
+    if job.get("fmt") == "tar.gz":
+        with tarfile.open(dst, "w:gz", compresslevel=6) as t:
+            for root, dirs, files in os.walk(src):
+                rel_root = os.path.relpath(root, src)
+                if rel_root != "." and _in_excluded_dir(
+                        rel_root, job["exclude_dirs"]):
+                    dirs[:] = []
                     continue
-                if d == "__pycache__" or d.endswith(".egg-info"):
+                _prune_dirs(root, dirs, rel_root, job)
+                for f in files:
+                    if _skip_file(f, job):
+                        continue
+                    full = os.path.join(root, f)
+                    arc = os.path.join(job["src"], os.path.relpath(full, src))
+                    t.add(full, arc, recursive=False)
+                    n += 1
+                    total += _fsize(full)
+    else:
+        with zipfile.ZipFile(dst, "w", zipfile.ZIP_DEFLATED,
+                             compresslevel=6) as z:
+            for root, dirs, files in os.walk(src):
+                rel_root = os.path.relpath(root, src)
+                if rel_root != "." and _in_excluded_dir(
+                        rel_root, job["exclude_dirs"]):
+                    dirs[:] = []
                     continue
-                keep.append(d)
-            dirs[:] = keep
-            for f in files:
-                if f in job["exclude_files"] or f.endswith(".pyc"):
-                    continue
-                full = os.path.join(root, f)
-                arc = os.path.join(job["src"], os.path.relpath(full, src))
-                z.write(full, arc)
-                n += 1
-                total += os.path.getsize(full)
+                _prune_dirs(root, dirs, rel_root, job)
+                for f in files:
+                    if _skip_file(f, job):
+                        continue
+                    full = os.path.join(root, f)
+                    arc = os.path.join(job["src"], os.path.relpath(full, src))
+                    z.write(full, arc)
+                    n += 1
+                    total += _fsize(full)
     size = os.path.getsize(dst)
     print("  %s -> %s  （%d 个文件，源 %.1f MB，包 %.1f MB）"
           % (name, job["zip"], n, total / 1048576.0, size / 1048576.0))
@@ -154,7 +212,7 @@ def pack(name):
 
 def main():
     os.makedirs(OUT, exist_ok=True)
-    targets = sys.argv[1:] or ["mobile", "web", "uos-source"]
+    targets = sys.argv[1:] or ["mobile", "web", "uos-source", "uos-portable"]
     if "all" in targets:
         targets = list(JOBS)
     for t in targets:

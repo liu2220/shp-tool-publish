@@ -54,7 +54,7 @@ def _send(pkg_name, download_name):
 
 @app.route("/dl/uos-portable")
 def uos_portable():
-    return _send("SHP_tool_UOS_portable.tar.gz", "SHP工具_UOS版_绿色版.tar.gz")
+    return _send("SHP工具_UOS版_绿色版.tar.gz", "SHP工具_UOS版_绿色版.tar.gz")
 
 
 @app.route("/dl/win7-portable")
@@ -64,7 +64,7 @@ def win7_portable():
 
 @app.route("/dl/uos-source")
 def uos_source():
-    return _send("SHP_tool_UOS_source.zip", "SHP工具_UOS版_源码.zip")
+    return _send("SHP工具_UOS版_源码.zip", "SHP工具_UOS版_源码.zip")
 
 
 @app.route("/dl/mobile")
