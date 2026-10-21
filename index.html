@@ -147,7 +147,7 @@
     <div class="icon">🐧</div>
     <div class="info">
       <div class="name">SHP工具_UOS版_绿色版.tar.gz</div>
-      <div class="meta">约 196 MB · 统信 UOS · x86-64 与龙芯 3A5000/3A6000 均可 · shapely 已内置（龙芯免安装）· 内置 DWG 转换工具 · 解压即用</div>
+      <div class="meta">约 204 MB · 统信 UOS · 单包自动匹配 x86-64 与龙芯 loongarch64 · x86 用内置自包含 Python（免装依赖），龙芯自动改用系统 python3 + 系统库（免编译）· 内置 DWG 转换工具 · 解压即用</div>
     </div>
     <a class="dl" href="/dl/uos-portable" download>下载</a>
   </div>
@@ -233,7 +233,7 @@
     <div class="logbox__body" id="logBody">
       <div class="note">
     <b>⚠️ 必看（龙芯用户）：</b>请务必使用本页新包——旧版包在龙芯上会「启动即崩」，且旧包内置 openpyxl 损坏（体检显示 ❌）。
-    新包在龙芯上双击 <b>run.sh</b> 即自动用系统 Python 原生运行；<b>v22 起 shapely 已随包内置（含 GEOS loongarch64 动态库），零安装</b>，无需再执行 sudo apt install。详见包内《龙芯部署指南.md》。<br>
+    <b>绿色版已升级为单包双架构</b>：同一个 <b>SHP工具_UOS版_绿色版.tar.gz</b> 在 x86-64 与龙芯 loongarch64 上<strong>都能直接双击 run.sh 运行</strong>——x86 走内置自包含 Python（免装依赖），龙芯自动改用系统 python3 + 系统 PyQt5/numpy/shapely/pyproj + 包内纯 Python 库，<strong>无需再单独挑源码版</strong>。龙芯上 shapely 走系统 python3-shapely（UOS 自带，缺失时 `sudo apt install python3-shapely`，免编译）。详见包内《龙芯部署指南.md》。<br>
     <b>🆕 本次 v34 更新（网页版 6 项 + 手机版 2 项）： </b><br>
     ① <b>多图层批量导出 / 批量删除</b>——网页版图层列表顶部新增批量工具条，可一键全选/反选/清空后再批量导出或删除，不必逐图层重复操作；<br>
     ② <b>图层列表带颜色标识</b>——每个图层在列表左侧显示与地图上一致的颜色圆点，多图层叠加时一眼对得上哪个色块是哪层数据；<br>
