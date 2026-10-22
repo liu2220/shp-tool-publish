@@ -52,7 +52,11 @@ JOBS = {
         "exclude_dirs": [".git", "__pycache__", ".pytest_cache", "tools",
                          "node_modules", ".idea"],
         "exclude_files": [".DS_Store"],
-        "exclude_globs": ["core", "core.*", "terminfo"],
+        # terminfo 断链（python/lib/terminfo -> 不存在的 share/terminfo）
+        # 在任意层级；core/core.<pid> 崩溃转储只可能出现在包根顶层，
+        # 绝不能按 basename 全局匹配（会误杀 vendor/**/core.py，v41 踩坑）
+        "exclude_globs": ["terminfo"],
+        "exclude_globs_top": ["core", "core.[0-9]*"],
     },
 }
 
@@ -122,11 +126,23 @@ def _verify_uos_source(src):
     return bad
 
 
-def _skip_file(fname, job):
-    """文件级排除：精确名单 + glob（core.* 转储等）+ .pyc"""
+def _skip_file(fname, job, rel_root="."):
+    """文件级排除：精确名单 + glob + .pyc。
+
+    glob 分两类（v41 教训：曾用 basename glob "core.*" 排除崩溃转储，
+    结果把 vendor/openpyxl/packaging/core.py、pyparsing/core.py 等正常
+    模块一并误杀——openpyxl 16 处、pyparsing 7 处导入失败，ezdxf 因依赖
+    pyparsing.core 连带 182 处失败）：
+      exclude_globs     —— 任意层级生效（仅放不会误伤正常文件名的模式）
+      exclude_globs_top —— 仅 src 顶层生效（崩溃转储只应出现在包根目录）
+    """
     for pat in job.get("exclude_globs", []):
         if fnmatch.fnmatch(fname, pat):
             return True
+    if rel_root in (".", ""):
+        for pat in job.get("exclude_globs_top", []):
+            if fnmatch.fnmatch(fname, pat):
+                return True
     return (fname in job.get("exclude_files", [])
             or fname.endswith(".pyc"))
 
@@ -179,7 +195,7 @@ def pack(name):
                     continue
                 _prune_dirs(root, dirs, rel_root, job)
                 for f in files:
-                    if _skip_file(f, job):
+                    if _skip_file(f, job, rel_root):
                         continue
                     full = os.path.join(root, f)
                     arc = os.path.join(job["src"], os.path.relpath(full, src))
@@ -197,7 +213,7 @@ def pack(name):
                     continue
                 _prune_dirs(root, dirs, rel_root, job)
                 for f in files:
-                    if _skip_file(f, job):
+                    if _skip_file(f, job, rel_root):
                         continue
                     full = os.path.join(root, f)
                     arc = os.path.join(job["src"], os.path.relpath(full, src))
