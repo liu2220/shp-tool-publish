@@ -18,7 +18,7 @@ OUT = os.path.join(WORKSPACE, "downloads", "packages")
 JOBS = {
     "mobile": {
         "src": "SHP工具_手机版",
-        "zip": "SHP工具_手机版_v1.24.zip",
+        "zip": "SHP工具_手机版_v1.25.zip",
         # android 工程（APK 源码）与 .git 不打进 PWA 包；vendor 必须带（内置 LibreDWG/SheetJS）
         "exclude_dirs": [".git", "android", "__pycache__", ".gradle", "node_modules"],
         # tileserver.py 保留：用户挂载离线瓦片包时需要（也是 E2E 依赖）
