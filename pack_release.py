@@ -18,11 +18,18 @@ OUT = os.path.join(WORKSPACE, "downloads", "packages")
 JOBS = {
     "mobile": {
         "src": "SHP工具_手机版",
-        "zip": "SHP工具_手机版_v1.28.zip",
+        "zip": "SHP工具_手机版_v1.29.zip",
         # android 工程（APK 源码）与 .git 不打进 PWA 包；vendor 必须带（内置 LibreDWG/SheetJS）
         "exclude_dirs": [".git", "android", "__pycache__", ".gradle", "node_modules"],
         # tileserver.py 保留：用户挂载离线瓦片包时需要（也是 E2E 依赖）
         "exclude_files": [],
+    },
+    "win7": {
+        "src": "SHP工具_Win7版_绿色版",
+        "zip": "SHP_tool_Win7_portable.zip",
+        # 绿色版自带内嵌 python/；tools 为 x86-64 二进制轮子目录（运行期不需要）
+        "exclude_dirs": [".git", "__pycache__", "tools", "node_modules", ".idea"],
+        "exclude_files": [".DS_Store"],
     },
     "web": {
         "src": "SHP工具_网页版",
